@@ -1,0 +1,42 @@
+name: Site Health Check
+
+on:
+  schedule:
+     - cron: '43 6 * * *'   # 9:43
+     - cron: '57 13 * * *'  # 16:57 
+  workflow_dispatch: {}
+
+jobs:
+  healthcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - run: npx playwright install --with-deps chromium
+
+      - name: Run health check
+        run: npm start
+        env:
+          SOAX_HOST: ${{ secrets.SOAX_HOST }}
+          SOAX_PORT: ${{ secrets.SOAX_PORT }}
+          SOAX_LOGIN_PREFIX: ${{ secrets.SOAX_LOGIN_PREFIX }}
+          SOAX_LOGIN_SUFFIX: ${{ secrets.SOAX_LOGIN_SUFFIX }}
+          SOAX_PASSWORD: ${{ secrets.SOAX_PASSWORD }}
+          PROXY_COUNTRY: de
+          PROXY_ROTATE_SESSION: "true"
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
