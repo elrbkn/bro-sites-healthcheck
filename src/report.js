@@ -28,11 +28,13 @@ function buildReport(results, meta = {}) {
   if (failed.length > 0) {
     lines.push(`<b>Проблемные сайты (${failed.length}):</b>`);
     for (const r of failed) {
+      const extraWarn =
+        r.warnings && r.warnings.length ? `\n   Также: ${escapeHtml(r.warnings.join("; "))}` : "";
       lines.push(
-        `❌ <b>${escapeHtml(r.name)}</b>` +
+        `❌ <b>${escapeHtml(r.name)}</b>\n` +
           `   ${escapeHtml(r.url)}\n` +
           `   Статус: ${r.statusCode ?? "нет ответа"} | Время: ${formatDuration(r.loadTimeMs)} | Попыток: ${r.attempts ?? 1}\n` +
-          `   Причина: ${escapeHtml(r.error || "неизвестная ошибка")}`
+          `   Причина: ${escapeHtml(r.error || "неизвестная ошибка")}${extraWarn}`
       );
     }
     lines.push("");

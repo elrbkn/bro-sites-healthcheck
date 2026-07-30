@@ -18,5 +18,5 @@ module.exports = [
   { name: "Личный кабинет Bratik", url: "http://cabinet.bratik.club/" },
   { name: "Портал CPA Bro", url: "cpabro.vip" },
   { name: "Личный кабинет CPA Bro", url: "cabinet.h1m1.space" },
-  { name: "l1l.pw линка", url: "https://l1l.pw/1j2qrjt" },
+  { name: "l1l.pw линка", url: "https://l1l.pw/1j2qrjt", allowDomainChange: true },
 ];
