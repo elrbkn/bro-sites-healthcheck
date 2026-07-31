@@ -30,9 +30,6 @@ function splitMessage(text, limit = TELEGRAM_MESSAGE_LIMIT) {
   return chunks;
 }
 
-/**
- * Отправляет текстовое сообщение в Telegram чат, разбивая на части при необходимости.
- */
 async function sendTelegramMessage(text) {
   const client = buildAxiosClient();
   const url = `https://api.telegram.org/bot${config.telegram.botToken}/sendMessage`;

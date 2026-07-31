@@ -1,15 +1,21 @@
 name: Site Health Check
 
 on:
-  schedule:
-     - cron: '43 6 * * *'   # 9:43
-     - cron: '57 13 * * *'  # 16:57 
+   schedule:
+    # UTC-время. Соответствует ≈03:00 / 11:00 / 19:00 по Europe/Riga
+    - cron: "0 0,8,16 * * *"
   workflow_dispatch: {}
+
+permissions:
+  contents: write   # нужно, чтобы закоммитить обновлённый state/last-status.json обратно
 
 jobs:
   healthcheck:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    concurrency:
+      group: site-healthcheck   # не даёт двум прогонам пересечься и одновременно пушить state
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -40,3 +46,14 @@ jobs:
           PROXY_ROTATE_SESSION: "true"
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DAILY_SUMMARY_HOUR: "11"
+          REPORT_TIMEZONE: "Europe/Riga"
+
+      - name: Commit updated state
+        if: always()   # даже если health check нашёл ошибки (exit code 1) — state всё равно нужно сохранить
+        run: |
+          git config user.name "healthcheck-bot"
+          git config user.email "healthcheck-bot@users.noreply.github.com"
+          git add state/last-status.json
+          git diff --cached --quiet || git commit -m "chore: update health-check state [skip ci]"
+          git push

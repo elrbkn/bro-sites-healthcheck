@@ -31,6 +31,11 @@ const config = {
     concurrency: int(process.env.CONCURRENCY, 3),
     minContentLength: int(process.env.MIN_CONTENT_LENGTH, 50),
   },
+  notify: {
+    stateFilePath: process.env.STATE_FILE_PATH || "state/last-status.json",
+    dailySummaryHour: int(process.env.DAILY_SUMMARY_HOUR, 11),
+    timezone: process.env.REPORT_TIMEZONE || "Europe/Riga",
+  },
 };
 
 function validate() {

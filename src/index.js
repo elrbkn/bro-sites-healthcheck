@@ -2,11 +2,12 @@ const { chromium } = require("playwright");
 const { config, validate } = require("./config");
 const sites = require("../sites");
 const { checkSiteWithRetries } = require("./checker");
-const { buildReport } = require("./report");
+const { buildReport, buildChangesReport } = require("./report");
 const { sendTelegramMessage } = require("./telegram");
+const { loadState, saveState } = require("./state");
 
 /**
- * Простой пул с ограничением параллелизма (без внешних зависимостей).
+ * Простой пул с ограничением параллелизма.
  */
 async function runWithConcurrency(items, limit, worker) {
   const results = new Array(items.length);
@@ -24,8 +25,22 @@ async function runWithConcurrency(items, limit, worker) {
   return results;
 }
 
+function todayStr() {
+  // YYYY-MM-DD в нужной таймзоне 
+  return new Date().toLocaleDateString("sv-SE", { timeZone: config.notify.timezone });
+}
+
+function currentHour() {
+  return parseInt(
+    new Date().toLocaleString("en-US", { timeZone: config.notify.timezone, hour: "2-digit", hour12: false }),
+    10
+  );
+}
+
 async function main() {
   validate();
+
+  const state = loadState(config.notify.stateFilePath);
 
   console.log(`Запуск проверки ${sites.length} сайтов через прокси SOAX (DE)...`);
 
@@ -45,20 +60,47 @@ async function main() {
     await browser.close();
   }
 
-  const report = buildReport(results);
-  console.log("\n---- ОТЧЁТ ----\n");
-  console.log(report.replace(/<\/?b>/g, ""));
-
-  try {
-    await sendTelegramMessage(report);
-    console.log("\nОтчёт отправлен в Telegram.");
-  } catch (err) {
-    console.error(
-      "\nНе удалось отправить отчёт в Telegram:",
-      err.response?.data || err.message
-    );
-    process.exitCode = 2;
+  // --- Сравниваем с прошлым запуском ---
+  const changes = [];
+  for (const r of results) {
+    const prev = state.sites[r.name];
+    const prevOk = prev ? prev.ok : true; // первый запуск: считаем, что "было ок", чтобы не спамить при старте
+    if (prev !== undefined && prevOk !== r.ok) {
+      changes.push({ name: r.name, url: r.url, from: prevOk, to: r.ok, result: r });
+    }
+    state.sites[r.name] = { ok: r.ok, statusCode: r.statusCode, checkedAt: new Date().toISOString() };
   }
+
+  const today = todayStr();
+  const isDailySummaryTime = currentHour() >= config.notify.dailySummaryHour && state.lastDailySummaryDate !== today;
+
+  console.log("\n---- РЕЗУЛЬТАТ ----\n");
+  console.log(buildReport(results).replace(/<\/?b>/g, ""));
+
+  const messagesToSend = [];
+  if (changes.length > 0) {
+    messagesToSend.push(buildChangesReport(changes));
+  }
+  if (isDailySummaryTime) {
+    messagesToSend.push(buildReport(results));
+    state.lastDailySummaryDate = today;
+  }
+
+  if (messagesToSend.length === 0) {
+    console.log("\nБез изменений и не время дневной сводки — в Telegram ничего не отправлено.");
+  } else {
+    try {
+      for (const msg of messagesToSend) {
+        await sendTelegramMessage(msg);
+      }
+      console.log(`\nОтправлено сообщений в Telegram: ${messagesToSend.length}.`);
+    } catch (err) {
+      console.error("\nНе удалось отправить отчёт в Telegram:", err.response?.data || err.message);
+      process.exitCode = 2;
+    }
+  }
+
+  saveState(config.notify.stateFilePath, state);
 
   const hasFailures = results.some((r) => !r.ok);
   if (hasFailures) {
