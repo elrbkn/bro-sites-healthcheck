@@ -191,6 +191,17 @@ async function checkSite(browser, site) {
       );
     }
 
+    // --- Проверка ключевых фраз, специфичных для сайта ---
+    if (site.expectedText && site.expectedText.length > 0) {
+      const bodyText = (await page.evaluate(() => document.body?.innerText || "")).toLowerCase();
+      const missing = site.expectedText.filter((phrase) => !bodyText.includes(phrase.toLowerCase()));
+      if (missing.length > 0) {
+        throw new Error(
+          `На странице не найдены ожидаемые фразы: ${missing.map((p) => `"${p}"`).join(", ")} — вероятно, контент не отрендерился или сломался шаблон`
+        );
+      }
+    }
+
     if (pageData.interactiveEls === 0) {
       result.warnings.push(
         "На странице не найдено интерактивных элементов (ссылок/кнопок/полей) — возможно, страница не полностью функциональна"
