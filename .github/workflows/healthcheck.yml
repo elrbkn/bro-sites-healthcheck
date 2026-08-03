@@ -1,10 +1,9 @@
 name: Site Health Check
 
 on:
-   schedule:
-    # UTC-время. Соответствует ≈03:00 / 11:00 / 19:00 по Europe/Riga
-    - cron: "0 0,8,16 * * *"
-  workflow_dispatch: {}
+  schedule:          
+    - cron: "0 0,8,16 * * *" # UTC-время. Соответствует ≈03:00 / 11:00 / 19:00 по Europe/Riga
+  workflow_dispatch: 
 
 permissions:
   contents: write   # нужно, чтобы закоммитить обновлённый state/last-status.json обратно
