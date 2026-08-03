@@ -14,9 +14,8 @@ module.exports = [
   { name: "Press Aff com", url: "http://pressaff.com/", expectedText: ["Каталог ПП", "Глоссарий"] },
   { name: "Press Aff ru", url: "http://pressaff.ru/", expectedText: ["Статьи", "СММ"] },
   { name: "Портал Chocopay", url: "https://portal.chocopay.io/", expectedText: ["Виртуальные карты иностранных банков"] },
-  { name: "Личный кабинет Chocopay", url: "cabinet.chocopay.io", expectedText: ["Почта", "Пароль"], allowDomainChange: true },
-  { name: "Личный кабинет Bratik", url: "http://cabinet.bratik.club/", expectedText: ["Введите email и пароль"] },
+  { name: "Кабинет Chocopay", url: "cabinet.chocopay.io", expectedText: ["Почта", "Пароль"], allowDomainChange: true },
   { name: "Портал CPA Bro", url: "cpabro.vip", expectedText: ["CPA BRO", "LOG IN"] },
-  { name: "Личный кабинет CPA Bro", url: "cabinet.h1m1.space", expectedText: ["cpabro.vip", "Войти"] },
-  { name: "l1l.pw линка", url: "https://l1l.pw/1j2qrjt", allowDomainChange: true },
+  { name: "Кабинет CPA Bro", url: "cabinet.h1m1.space", expectedText: ["cpabro.vip", "Войти"] },
+  { name: "l1l.pw линка", url: "https://l1l.pw/1kr5f6r", allowDomainChange: true },
 ];
