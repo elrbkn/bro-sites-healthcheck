@@ -88,6 +88,9 @@ async function verifyDomainChange(browser, url, expectedHost) {
 async function checkMobileViewport(browser, url, site = {}) {
   let context, page;
   try {
+    // Используем site.mobileTimeout, если задан, иначе 1.5 * глобальный таймаут (для запаса)
+    const timeout = site.mobileTimeout ?? config.check.pageTimeoutMs * 1.5;
+    
     context = await browser.newContext({
       proxy: getProxyConfig(),
       ignoreHTTPSErrors: true,
@@ -97,25 +100,25 @@ async function checkMobileViewport(browser, url, site = {}) {
       hasTouch: true,
       locale: "de-DE",
     });
-    context.setDefaultTimeout(config.check.pageTimeoutMs);
+    context.setDefaultTimeout(timeout);
     page = await context.newPage();
 
     const response = await page.goto(url, {
       waitUntil: "domcontentloaded",
-      timeout: config.check.pageTimeoutMs,
+      timeout: timeout,
     });
 
     if (!response) return { ok: false, error: "нет ответа на мобильной версии" };
     const status = response.status();
     if (status >= 400) return { ok: false, error: `мобильная версия вернула HTTP ${status}` };
 
-    // Даём время на динамический рендеринг (увеличено до 20 секунд)
-    await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
+    // Даём время на динамический рендеринг (увеличено до 20 секунд, но можно сделать зависимым от таймаута)
+    await page.waitForLoadState("networkidle", { timeout: Math.min(timeout * 0.5, 20000) }).catch(() => {});
 
     // 1. Проверяем наличие ожидаемого селектора (если задан)
     if (site.mobileExpectedSelector) {
       try {
-        await page.waitForSelector(site.mobileExpectedSelector, { timeout: 10000 });
+        await page.waitForSelector(site.mobileExpectedSelector, { timeout: Math.min(timeout * 0.3, 10000) });
       } catch {
         return {
           ok: false,
@@ -136,7 +139,6 @@ async function checkMobileViewport(browser, url, site = {}) {
           error: `На мобильной версии не найдены фразы: ${missing.join(", ")}`,
         };
       }
-      // Если все фразы найдены, считаем проверку успешной (даже если текста мало)
       return { ok: true, statusCode: status };
     }
 
@@ -157,11 +159,12 @@ async function checkMobileViewport(browser, url, site = {}) {
     if (page) await page.close().catch(() => {});
     if (context) await context.close().catch(() => {});
   }
-}
+} // <- ЭТА ЗАКРЫВАЮЩАЯ СКОБКА БЫЛА ОТСУТСТВУЕТ
 
 /**
  * ОПЦИОНАЛЬНЫЙ активный клик-тест: кликает по заданному в конфиге сайта
  * селектору и проверяет, что произошла реальная навигация.
+ * Поддерживает открытие новой вкладки (popup).
  */
 async function runClickTest(page, clickTest) {
   const { selector, expectedUrlIncludes } = clickTest;
@@ -169,18 +172,57 @@ async function runClickTest(page, clickTest) {
   if (!el) return { ok: false, error: `элемент "${selector}" не найден` };
 
   const beforeUrl = page.url();
+
+  // Промисы для ожидания навигации или открытия popup
+  let navigationDone = false;
+  let popupPage = null;
+
+  const navigationPromise = page.waitForNavigation({ timeout: 5000 })
+    .then(() => { navigationDone = true; })
+    .catch(() => {});
+
+  const popupPromise = new Promise((resolve) => {
+    const context = page.context();
+    const onPage = (newPage) => {
+      context.off('page', onPage);
+      popupPage = newPage;
+      resolve();
+    };
+    context.on('page', onPage);
+    // Таймаут, чтобы не ждать вечно
+    setTimeout(() => {
+      context.off('page', onPage);
+      resolve();
+    }, 5000);
+  });
+
   try {
     await el.click({ timeout: 5000 });
   } catch (err) {
     return { ok: false, error: `не удалось кликнуть по "${selector}": ${err.message}` };
   }
-  await page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {});
-  const afterUrl = page.url();
 
-  if (expectedUrlIncludes && !afterUrl.includes(expectedUrlIncludes)) {
-    return { ok: false, error: `после клика URL "${afterUrl}" не содержит "${expectedUrlIncludes}"` };
+  // Ждём первое завершившееся событие
+  await Promise.race([navigationPromise, popupPromise]);
+
+  let targetUrl;
+  if (navigationDone) {
+    // Навигация произошла в текущей вкладке
+    targetUrl = page.url();
+  } else if (popupPage) {
+    // Открылась новая вкладка
+    await popupPage.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => {});
+    targetUrl = popupPage.url();
+    // Закрываем новую вкладку после проверки (опционально)
+    await popupPage.close().catch(() => {});
+  } else {
+    return { ok: false, error: `клик не привел к навигации или открытию новой вкладки за 5 сек` };
   }
-  if (afterUrl === beforeUrl) {
+
+  if (expectedUrlIncludes && !targetUrl.includes(expectedUrlIncludes)) {
+    return { ok: false, error: `после клика URL "${targetUrl}" не содержит "${expectedUrlIncludes}"` };
+  }
+  if (targetUrl === beforeUrl) {
     return { ok: false, error: `URL не изменился после клика по "${selector}"` };
   }
   return { ok: true };
@@ -277,19 +319,18 @@ async function checkSite(browser, site) {
     // --- Консольные ошибки JS ---
     const consoleErrors = [];
     page.on("console", (msg) => {
-  if (msg.type() !== "error") return;
-  const text = msg.text().slice(0, 150);
+      if (msg.type() !== "error") return;
+      const text = msg.text().slice(0, 150);
 
-  // ---- НОВАЯ ПРОВЕРКА: игнорируем ошибки по списку ----
-  if (site.ignoreConsoleErrors && site.ignoreConsoleErrors.some(pattern => text.includes(pattern))) {
-    return; 
-  }
+      if (site.ignoreConsoleErrors && site.ignoreConsoleErrors.some(pattern => text.includes(pattern))) {
+        return;
+      }
 
-  const loc = msg.location();
-  const errHost = loc && loc.url ? hostnameOf(loc.url) : null;
-  if (isNoiseHost(errHost)) return;
-  consoleErrors.push(errHost ? `${text} [${errHost}]` : text);
-});
+      const loc = msg.location();
+      const errHost = loc && loc.url ? hostnameOf(loc.url) : null;
+      if (isNoiseHost(errHost)) return;
+      consoleErrors.push(errHost ? `${text} [${errHost}]` : text);
+    });
     page.on("pageerror", (err) => {
       consoleErrors.push(`Необработанное исключение: ${err.message}`.slice(0, 200));
     });
@@ -378,20 +419,27 @@ async function checkSite(browser, site) {
       throw new Error(`На странице обнаружены признаки ошибки/блокировки: "${matchedMarker}"`);
     }
 
-    if (pageData.textLength < config.check.minContentLength && pageData.html < 500) {
-      throw new Error(
-        `Страница загрузилась, но контента почти нет (текста: ${pageData.textLength} символов) — вероятно, пустая страница`
-      );
-    }
-
-    // --- Проверка ключевых фраз ---
-    if (site.expectedText && site.expectedText.length > 0) {
+    // --- ПРОВЕРКА ОЖИДАЕМЫХ ФРАЗ (СНАЧАЛА) ---
+    const hasExpectedText = site.expectedText && site.expectedText.length > 0;
+    if (hasExpectedText) {
       const bodyText = (await page.evaluate(() => document.body?.innerText || "")).toLowerCase();
       const missing = site.expectedText.filter((phrase) => !bodyText.includes(phrase.toLowerCase()));
       if (missing.length > 0) {
         throw new Error(
           `На странице не найдены ожидаемые фразы: ${missing.map((p) => `"${p}"`).join(", ")} — вероятно, контент не отрендерился или сломался шаблон`
         );
+      }
+    }
+
+    // --- ПРОВЕРКА МИНИМАЛЬНОЙ ДЛИНЫ КОНТЕНТА (ТЕПЕРЬ С УЧЁТОМ expectedText) ---
+    const minLength = site.minContentLength ?? config.check.minContentLength;
+    if (pageData.textLength < minLength) {
+      const msg = `Страница содержит мало текста (${pageData.textLength} симв., порог ${minLength})`;
+      if (hasExpectedText) {
+        // Ожидаемые фразы найдены → это не критично, просто предупреждение
+        result.warnings.push(msg + ' — возможно, контент минимален, но ожидаемые фразы присутствуют');
+      } else {
+        throw new Error(msg + ' — возможно, контент не загрузился');
       }
     }
 

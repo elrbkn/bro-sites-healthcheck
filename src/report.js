@@ -24,7 +24,7 @@ const GROUP_DEFINITIONS = [
   { title: "Press Aff", members: ["Press Aff com", "Press Aff ru"] },
   { title: "App Heroes", members: ["App Heroes"] },
   { title: "Say Play", members: ["Say Play"] },
-  { title: "Медиа", members: ["Research", "Digitalbosses", "BRO agency", "AI Tech"] },
+  { title: "Другое", members: ["Research", "Digitalbosses", "BRO agency", "AI Tech", "Insider"] },
 ];
 
 function groupResults(results) {

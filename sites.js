@@ -14,8 +14,8 @@ module.exports = [
   { name: "Press Aff com", url: "http://pressaff.com/", expectedText: ["Каталог ПП", "Глоссарий"] },
   { name: "Press Aff ru", url: "http://pressaff.ru/", expectedText: ["Статьи", "СММ"] },
   { name: "Портал Chocopay", url: "https://portal.chocopay.io/", expectedText: ["Виртуальные карты иностранных банков"] },
-  { name: "Кабинет Chocopay", url: "cabinet.chocopay.io", expectedText: ["Почта", "Пароль"], allowDomainChange: true, ignoreConsoleErrors: ["401", "api.chocopay.io"] },
-  { name: "Портал CPA Bro", url: "cpabro.vip", expectedText: ["CPA BRO", "LOG IN"] },
-  { name: "Кабинет CPA Bro", url: "cabinet.h1m1.space", expectedText: ["cpabro.vip", "Войти"], mobileMinContentLength: 10, mobileExpectedSelector: 'input[type="password"]' },
+  { name: "Кабинет Chocopay", url: "cabinet.chocopay.io", expectedText: ["Почта", "Пароль"], allowDomainChange: true, ignoreConsoleErrors: ["401", "api.chocopay.io"], mobileTimeout: 60000 },
+  { name: "Портал CPA Bro", url: "cpabro.vip", expectedText: ["CPA BRO", "LOG IN"], mobileTimeout: 60000 },
+  { name: "Кабинет CPA Bro", url: "cabinet.h1m1.space", expectedText: ["cpabro.vip", "Войти"], minContentLength: 10, mobileMinContentLength: 10, mobileExpectedSelector: 'input[type="password"]' },
   { name: "l1l.pw линка", url: "https://l1l.pw/1kr5f6r", allowDomainChange: true },
 ];

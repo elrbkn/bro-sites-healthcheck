@@ -95,9 +95,10 @@ async function main() {
       }
       console.log(`\nОтправлено сообщений в Telegram: ${messagesToSend.length}.`);
     } catch (err) {
-      console.error("\nНе удалось отправить отчёт в Telegram:", err.response?.data || err.message);
-      process.exitCode = 2;
-    }
+    console.error("\nНе удалось отправить отчёт в Telegram:");
+    console.error(err);  // выведет полный стек и все детали
+    process.exitCode = 2;
+  }
   }
 
   saveState(config.notify.stateFilePath, state);
