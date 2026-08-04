@@ -28,8 +28,9 @@ const config = {
   check: {
     pageTimeoutMs: int(process.env.PAGE_TIMEOUT_MS, 30000),
     retryCount: int(process.env.RETRY_COUNT, 1),
-    concurrency: int(process.env.CONCURRENCY, 3),
+    concurrency: int(process.env.CONCURRENCY, 1),
     minContentLength: int(process.env.MIN_CONTENT_LENGTH, 50),
+    mobileCheckEnabled: bool(process.env.MOBILE_CHECK_ENABLED, true),
   },
   notify: {
     stateFilePath: process.env.STATE_FILE_PATH || "state/last-status.json",

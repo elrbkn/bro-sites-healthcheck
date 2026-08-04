@@ -2,9 +2,33 @@ const { URL } = require("url");
 const { config } = require("./config");
 const { getProxyConfig } = require("./proxy");
 const { checkSsl } = require("./ssl");
+const { resolveDns } = require("./dns");
+
+const CONSOLE_NOISE_HOSTS = [
+  "google-analytics.com",
+  "googletagmanager.com",
+  "doubleclick.net",
+  "facebook.net",
+  "connect.facebook.net",
+  "hotjar.com",
+  "mc.yandex.ru",
+  "yandex.ru",
+  "sentry.io",
+  "clarity.ms",
+  "google.com/pagead",
+];
+
+function isNoiseHost(hostname) {
+  if (!hostname) return false;
+  return CONSOLE_NOISE_HOSTS.some((h) => hostname.includes(h));
+}
 
 const STATIC_RESOURCE_RE = /\.(css|js)(\?.*)?$/i;
 const MAX_ACCEPTABLE_REDIRECTS = 3;
+const MOBILE_VIEWPORT = { width: 390, height: 844 };
+const MOBILE_USER_AGENT =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 " +
+  "(KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
 
 function hostnameOf(u) {
   try {
@@ -27,8 +51,142 @@ function buildRedirectChain(response) {
   return chain;
 }
 
-// Фразы, по которым можно распознать "мёртвую"/заблокированную страницу,
-// даже если HTTP статус формально 200
+/**
+ * Контрольная перепроверка смены домена свежей прокси-сессией.
+ * Увеличен таймаут для уменьшения ложных срабатываний.
+ */
+async function verifyDomainChange(browser, url, expectedHost) {
+  let context, page;
+  try {
+    context = await browser.newContext({
+      proxy: getProxyConfig(),
+      ignoreHTTPSErrors: true,
+      locale: "de-DE",
+    });
+    // Увеличиваем таймаут на 50%, чтобы избежать временных сбоев
+    context.setDefaultTimeout(config.check.pageTimeoutMs * 1.5);
+    page = await context.newPage();
+    await page.goto(url, {
+      waitUntil: "domcontentloaded",
+      timeout: config.check.pageTimeoutMs * 1.5,
+    });
+    const finalHost = hostnameOf(page.url());
+    return { changed: finalHost !== expectedHost, finalHost };
+  } catch {
+    // Если и контрольная попытка не удалась — не усугубляем ложную тревогу.
+    return { changed: false };
+  } finally {
+    if (page) await page.close().catch(() => {});
+    if (context) await context.close().catch(() => {});
+  }
+}
+
+/**
+ * Лёгкая повторная загрузка страницы с мобильным viewport.
+ * Теперь учитывает параметры сайта (site) для гибкой настройки.
+ */
+async function checkMobileViewport(browser, url, site = {}) {
+  let context, page;
+  try {
+    context = await browser.newContext({
+      proxy: getProxyConfig(),
+      ignoreHTTPSErrors: true,
+      userAgent: MOBILE_USER_AGENT,
+      viewport: MOBILE_VIEWPORT,
+      isMobile: true,
+      hasTouch: true,
+      locale: "de-DE",
+    });
+    context.setDefaultTimeout(config.check.pageTimeoutMs);
+    page = await context.newPage();
+
+    const response = await page.goto(url, {
+      waitUntil: "domcontentloaded",
+      timeout: config.check.pageTimeoutMs,
+    });
+
+    if (!response) return { ok: false, error: "нет ответа на мобильной версии" };
+    const status = response.status();
+    if (status >= 400) return { ok: false, error: `мобильная версия вернула HTTP ${status}` };
+
+    // Даём время на динамический рендеринг (увеличено до 20 секунд)
+    await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
+
+    // 1. Проверяем наличие ожидаемого селектора (если задан)
+    if (site.mobileExpectedSelector) {
+      try {
+        await page.waitForSelector(site.mobileExpectedSelector, { timeout: 10000 });
+      } catch {
+        return {
+          ok: false,
+          error: `Не найден ожидаемый селектор: ${site.mobileExpectedSelector}`,
+        };
+      }
+    }
+
+    // 2. Проверяем ожидаемые фразы (если заданы)
+    if (site.expectedText && site.expectedText.length > 0) {
+      const bodyText = await page.evaluate(() => document.body?.innerText || "");
+      const missing = site.expectedText.filter(
+        (phrase) => !bodyText.toLowerCase().includes(phrase.toLowerCase())
+      );
+      if (missing.length > 0) {
+        return {
+          ok: false,
+          error: `На мобильной версии не найдены фразы: ${missing.join(", ")}`,
+        };
+      }
+      // Если все фразы найдены, считаем проверку успешной (даже если текста мало)
+      return { ok: true, statusCode: status };
+    }
+
+    // 3. Проверка длины текста с учётом персонального порога
+    const textLength = await page.evaluate(() => (document.body?.innerText || "").trim().length);
+    const minLength = site.mobileMinContentLength ?? config.check.minContentLength;
+    if (textLength < minLength) {
+      return {
+        ok: false,
+        error: `мобильная версия почти пустая (текста: ${textLength} симв., порог ${minLength})`,
+      };
+    }
+
+    return { ok: true, statusCode: status };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  } finally {
+    if (page) await page.close().catch(() => {});
+    if (context) await context.close().catch(() => {});
+  }
+}
+
+/**
+ * ОПЦИОНАЛЬНЫЙ активный клик-тест: кликает по заданному в конфиге сайта
+ * селектору и проверяет, что произошла реальная навигация.
+ */
+async function runClickTest(page, clickTest) {
+  const { selector, expectedUrlIncludes } = clickTest;
+  const el = await page.$(selector);
+  if (!el) return { ok: false, error: `элемент "${selector}" не найден` };
+
+  const beforeUrl = page.url();
+  try {
+    await el.click({ timeout: 5000 });
+  } catch (err) {
+    return { ok: false, error: `не удалось кликнуть по "${selector}": ${err.message}` };
+  }
+  await page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {});
+  const afterUrl = page.url();
+
+  if (expectedUrlIncludes && !afterUrl.includes(expectedUrlIncludes)) {
+    return { ok: false, error: `после клика URL "${afterUrl}" не содержит "${expectedUrlIncludes}"` };
+  }
+  if (afterUrl === beforeUrl) {
+    return { ok: false, error: `URL не изменился после клика по "${selector}"` };
+  }
+  return { ok: true };
+}
+
+// Фразы для распознавания "мёртвых" страниц
 const ERROR_PAGE_MARKERS = [
   "404 not found",
   "403 forbidden",
@@ -80,6 +238,17 @@ async function checkSite(browser, site) {
     warnings: [],
   };
 
+  // --- Быстрая DNS-проверка ---
+  const hostname = hostnameOf(url);
+  if (hostname) {
+    const dnsResult = await resolveDns(hostname);
+    if (!dnsResult.ok) {
+      result.error = dnsResult.error;
+      result.loadTimeMs = Date.now() - startedAt;
+      return result;
+    }
+  }
+
   try {
     context = await browser.newContext({
       proxy: getProxyConfig(),
@@ -94,8 +263,7 @@ async function checkSite(browser, site) {
 
     page = await context.newPage();
 
-    // Ловим ответы на CSS/JS ещё до навигации, чтобы поймать всё,
-    // что подгружается по ходу рендеринга страницы.
+    // Ловим ответы на CSS/JS
     const staticIssues = [];
     page.on("response", (res) => {
       const resUrl = res.url();
@@ -106,12 +274,32 @@ async function checkSite(browser, site) {
       }
     });
 
+    // --- Консольные ошибки JS ---
+    const consoleErrors = [];
+    page.on("console", (msg) => {
+  if (msg.type() !== "error") return;
+  const text = msg.text().slice(0, 150);
+
+  // ---- НОВАЯ ПРОВЕРКА: игнорируем ошибки по списку ----
+  if (site.ignoreConsoleErrors && site.ignoreConsoleErrors.some(pattern => text.includes(pattern))) {
+    return; 
+  }
+
+  const loc = msg.location();
+  const errHost = loc && loc.url ? hostnameOf(loc.url) : null;
+  if (isNoiseHost(errHost)) return;
+  consoleErrors.push(errHost ? `${text} [${errHost}]` : text);
+});
+    page.on("pageerror", (err) => {
+      consoleErrors.push(`Необработанное исключение: ${err.message}`.slice(0, 200));
+    });
+
     const response = await page.goto(url, {
       waitUntil: "domcontentloaded",
       timeout: config.check.pageTimeoutMs,
     });
 
-    // Дадим странице подгрузить динамический контент/скрипты.
+    // Даём странице подгрузить динамический контент
     await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
 
     result.finalUrl = page.url();
@@ -152,7 +340,16 @@ async function checkSite(browser, site) {
         result.warnings.push(`Длинная цепочка редиректов: ${redirectCount} переходов`);
       }
       if (startHost && endHost && startHost !== endHost && !site.allowDomainChange) {
-        result.warnings.push(`Редирект на другой домен: ${startHost} → ${endHost}`);
+        const verification = await verifyDomainChange(browser, url, startHost);
+        if (verification.changed) {
+          result.warnings.push(
+            `Редирект на другой домен: ${startHost} → ${endHost} (подтверждено повторной проверкой)`
+          );
+        } else {
+          console.log(
+            `   ⚠️  ${site.name}: разово увиден редирект на ${endHost}, но при перепроверке — домен корректный (похоже на сбой прокси-сессии, не репортим)`
+          );
+        }
       }
     }
 
@@ -187,7 +384,7 @@ async function checkSite(browser, site) {
       );
     }
 
-    // --- Проверка ключевых фраз, специфичных для сайта ---
+    // --- Проверка ключевых фраз ---
     if (site.expectedText && site.expectedText.length > 0) {
       const bodyText = (await page.evaluate(() => document.body?.innerText || "")).toLowerCase();
       const missing = site.expectedText.filter((phrase) => !bodyText.includes(phrase.toLowerCase()));
@@ -227,6 +424,29 @@ async function checkSite(browser, site) {
       }
     }
 
+    // --- Консольные ошибки JS ---
+    if (consoleErrors.length > 0) {
+      const uniqueErrors = [...new Set(consoleErrors)].slice(0, 3);
+      result.warnings.push(`Ошибки в консоли JS (${consoleErrors.length}): ${uniqueErrors.join(" | ")}`);
+    }
+
+    // --- Мобильный viewport (передаём site для гибких настроек) ---
+    if (config.check.mobileCheckEnabled && site.mobileCheck !== false) {
+      const mobile = await checkMobileViewport(browser, url, site);
+      result.mobile = mobile;
+      if (!mobile.ok) {
+        result.warnings.push(`Мобильная версия: ${mobile.error}`);
+      }
+    }
+
+    // --- Активный клик-тест ---
+    if (site.clickTest && site.clickTest.selector) {
+      const click = await runClickTest(page, site.clickTest);
+      if (!click.ok) {
+        result.warnings.push(`Клик-тест: ${click.error}`);
+      }
+    }
+
     result.ok = true;
   } catch (err) {
     result.ok = false;
@@ -241,7 +461,7 @@ async function checkSite(browser, site) {
 }
 
 /**
- * Проверяет сайт с повторными попытками при неуспехе (транспортные/таймаут ошибки).
+ * Проверяет сайт с повторными попытками при неуспехе.
  */
 async function checkSiteWithRetries(browser, site) {
   let attempt = 0;
