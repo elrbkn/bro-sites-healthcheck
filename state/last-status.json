@@ -1,54 +1,54 @@
 {
   "sites": {
     "App Heroes": {
-      "ok": true,
-      "statusCode": 200,
-      "checkedAt": "2026-08-18T08:25:28.905Z"
+      "ok": false,
+      "statusCode": null,
+      "checkedAt": "2026-08-18T16:17:09.564Z"
     },
     "Research": {
-      "ok": true,
-      "statusCode": 200,
-      "checkedAt": "2026-08-18T08:25:28.905Z"
+      "ok": false,
+      "statusCode": 422,
+      "checkedAt": "2026-08-18T16:17:09.564Z"
     },
     "Digitalbosses": {
-      "ok": true,
-      "statusCode": 200,
-      "checkedAt": "2026-08-18T08:25:28.905Z"
+      "ok": false,
+      "statusCode": 422,
+      "checkedAt": "2026-08-18T16:17:09.564Z"
     },
     "Say Play": {
-      "ok": true,
-      "statusCode": 200,
-      "checkedAt": "2026-08-18T08:25:28.905Z"
+      "ok": false,
+      "statusCode": 422,
+      "checkedAt": "2026-08-18T16:17:09.564Z"
     },
     "Insider": {
-      "ok": true,
-      "statusCode": 200,
-      "checkedAt": "2026-08-18T08:25:28.905Z"
+      "ok": false,
+      "statusCode": 422,
+      "checkedAt": "2026-08-18T16:17:09.564Z"
     },
     "BRO agency": {
-      "ok": true,
-      "statusCode": 200,
-      "checkedAt": "2026-08-18T08:25:28.905Z"
+      "ok": false,
+      "statusCode": null,
+      "checkedAt": "2026-08-18T16:17:09.564Z"
     },
     "AI Tech": {
-      "ok": true,
-      "statusCode": 200,
-      "checkedAt": "2026-08-18T08:25:28.905Z"
+      "ok": false,
+      "statusCode": 422,
+      "checkedAt": "2026-08-18T16:17:09.564Z"
     },
     "Press Aff com": {
-      "ok": true,
-      "statusCode": 200,
-      "checkedAt": "2026-08-18T08:25:28.905Z"
+      "ok": false,
+      "statusCode": 422,
+      "checkedAt": "2026-08-18T16:17:09.564Z"
     },
     "Press Aff ru": {
-      "ok": true,
-      "statusCode": 200,
-      "checkedAt": "2026-08-18T08:25:28.905Z"
+      "ok": false,
+      "statusCode": 422,
+      "checkedAt": "2026-08-18T16:17:09.564Z"
     },
     "Портал Chocopay": {
-      "ok": true,
-      "statusCode": 200,
-      "checkedAt": "2026-08-18T08:25:28.905Z"
+      "ok": false,
+      "statusCode": null,
+      "checkedAt": "2026-08-18T16:17:09.564Z"
     },
     "Личный кабинет Chocopay": {
       "ok": true,
@@ -61,9 +61,9 @@
       "checkedAt": "2026-07-31T13:10:53.212Z"
     },
     "Портал CPA Bro": {
-      "ok": true,
-      "statusCode": 200,
-      "checkedAt": "2026-08-18T08:25:28.905Z"
+      "ok": false,
+      "statusCode": null,
+      "checkedAt": "2026-08-18T16:17:09.564Z"
     },
     "Личный кабинет CPA Bro": {
       "ok": true,
@@ -73,17 +73,17 @@
     "l1l.pw линка": {
       "ok": false,
       "statusCode": null,
-      "checkedAt": "2026-08-18T08:25:28.905Z"
+      "checkedAt": "2026-08-18T16:17:09.564Z"
     },
     "Кабинет Chocopay": {
-      "ok": true,
-      "statusCode": 200,
-      "checkedAt": "2026-08-18T08:25:28.905Z"
+      "ok": false,
+      "statusCode": null,
+      "checkedAt": "2026-08-18T16:17:09.564Z"
     },
     "Кабинет CPA Bro": {
       "ok": false,
       "statusCode": null,
-      "checkedAt": "2026-08-18T08:25:28.905Z"
+      "checkedAt": "2026-08-18T16:17:09.564Z"
     }
   },
   "lastDailySummaryDate": "2026-08-18"
