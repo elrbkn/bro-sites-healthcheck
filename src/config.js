@@ -22,18 +22,19 @@ const config = {
   },
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN,
-    chatId: process.env.TELEGRAM_CHAT_ID,
+    chatId: process.env.TELEGRAM_CHAT_ID || null, // теперь опционально: используется как "затравочный" получатель, если задан
     proxyUrl: process.env.TELEGRAM_PROXY_URL || "",
   },
   check: {
     pageTimeoutMs: int(process.env.PAGE_TIMEOUT_MS, 30000),
     retryCount: int(process.env.RETRY_COUNT, 1),
-    concurrency: int(process.env.CONCURRENCY, 1),
+    concurrency: int(process.env.CONCURRENCY, 3),
     minContentLength: int(process.env.MIN_CONTENT_LENGTH, 50),
     mobileCheckEnabled: bool(process.env.MOBILE_CHECK_ENABLED, true),
   },
   notify: {
     stateFilePath: process.env.STATE_FILE_PATH || "state/last-status.json",
+    subscribersFilePath: process.env.SUBSCRIBERS_FILE_PATH || "state/subscribers.json",
     dailySummaryHour: int(process.env.DAILY_SUMMARY_HOUR, 11),
     timezone: process.env.REPORT_TIMEZONE || "Europe/Riga",
   },
@@ -47,7 +48,8 @@ function validate() {
   if (!config.soax.loginSuffix) missing.push("SOAX_LOGIN_SUFFIX");
   if (!config.soax.password) missing.push("SOAX_PASSWORD");
   if (!config.telegram.botToken) missing.push("TELEGRAM_BOT_TOKEN");
-  if (!config.telegram.chatId) missing.push("TELEGRAM_CHAT_ID");
+  // TELEGRAM_CHAT_ID больше не обязателен — получатели могут определяться
+  // динамически через /start (см. src/subscribers.js)
 
   if (missing.length) {
     throw new Error(

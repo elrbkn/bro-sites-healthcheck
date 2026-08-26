@@ -8,7 +8,7 @@ module.exports = [
   { name: "Research", url: "http://igamingresearch.ru", expectedText: ["Research by CPA BRO"] },
   { name: "Digitalbosses", url: "http://digitalbosses.ru/", expectedText: ["BlackMedia"] },
   { name: "Say Play", url: "http://sayplay.ru/", expectedText: ["ЗАБРОНИРОВАТЬ"] },
-  { name: "Insider", url: "http://ignews.com/", expectedText: ["igaming insider"], allowDomainChange: true },
+  { name: "Insider", url: "https://ignews.com/", expectedText: ["igaming insider"], allowDomainChange: true },
   { name: "BRO agency", url: "https://broagency.io/", expectedText: ["START WITH US"] },
   { name: "AI Tech", url: "http://aitechmedia.co/", expectedText: ["AI TECH MEDIA"] },
   { name: "Press Aff com", url: "http://pressaff.com/", expectedText: ["Каталог ПП", "Глоссарий"] },

@@ -30,6 +30,19 @@ const MOBILE_USER_AGENT =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 " +
   "(KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
 
+let cachedDesktopUserAgent = null;
+
+async function getDesktopUserAgent(browser) {
+  if (cachedDesktopUserAgent) return cachedDesktopUserAgent;
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const realUa = await page.evaluate(() => navigator.userAgent);
+  await page.close();
+  await context.close();
+  cachedDesktopUserAgent = realUa.replace("HeadlessChrome/", "Chrome/");
+  return cachedDesktopUserAgent;
+}
+
 function hostnameOf(u) {
   try {
     return new URL(u).hostname.replace(/^www\./, "");
@@ -59,8 +72,9 @@ async function verifyDomainChange(browser, url, expectedHost) {
   let context, page;
   try {
     context = await browser.newContext({
-      proxy: getProxyConfig(),
+      proxy: getProxyConfig(), // новый вызов — новая сессия/IP из пула DE
       ignoreHTTPSErrors: true,
+      userAgent: await getDesktopUserAgent(browser),
       locale: "de-DE",
     });
     // Увеличиваем таймаут на 50%, чтобы избежать временных сбоев
@@ -90,7 +104,7 @@ async function checkMobileViewport(browser, url, site = {}) {
   try {
     // Используем site.mobileTimeout, если задан, иначе 1.5 * глобальный таймаут (для запаса)
     const timeout = site.mobileTimeout ?? config.check.pageTimeoutMs * 1.5;
-    
+
     context = await browser.newContext({
       proxy: getProxyConfig(),
       ignoreHTTPSErrors: true,
@@ -159,7 +173,7 @@ async function checkMobileViewport(browser, url, site = {}) {
     if (page) await page.close().catch(() => {});
     if (context) await context.close().catch(() => {});
   }
-} // <- ЭТА ЗАКРЫВАЮЩАЯ СКОБКА БЫЛА ОТСУТСТВУЕТ
+}
 
 /**
  * ОПЦИОНАЛЬНЫЙ активный клик-тест: кликает по заданному в конфиге сайта
@@ -177,21 +191,24 @@ async function runClickTest(page, clickTest) {
   let navigationDone = false;
   let popupPage = null;
 
-  const navigationPromise = page.waitForNavigation({ timeout: 5000 })
-    .then(() => { navigationDone = true; })
+  const navigationPromise = page
+    .waitForNavigation({ timeout: 5000 })
+    .then(() => {
+      navigationDone = true;
+    })
     .catch(() => {});
 
   const popupPromise = new Promise((resolve) => {
     const context = page.context();
     const onPage = (newPage) => {
-      context.off('page', onPage);
+      context.off("page", onPage);
       popupPage = newPage;
       resolve();
     };
-    context.on('page', onPage);
+    context.on("page", onPage);
     // Таймаут, чтобы не ждать вечно
     setTimeout(() => {
-      context.off('page', onPage);
+      context.off("page", onPage);
       resolve();
     }, 5000);
   });
@@ -211,7 +228,7 @@ async function runClickTest(page, clickTest) {
     targetUrl = page.url();
   } else if (popupPage) {
     // Открылась новая вкладка
-    await popupPage.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => {});
+    await popupPage.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {});
     targetUrl = popupPage.url();
     // Закрываем новую вкладку после проверки (опционально)
     await popupPage.close().catch(() => {});
@@ -295,9 +312,7 @@ async function checkSite(browser, site) {
     context = await browser.newContext({
       proxy: getProxyConfig(),
       ignoreHTTPSErrors: true,
-      userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      userAgent: await getDesktopUserAgent(browser),
       viewport: { width: 1366, height: 768 },
       locale: "de-DE",
     });
@@ -322,7 +337,7 @@ async function checkSite(browser, site) {
       if (msg.type() !== "error") return;
       const text = msg.text().slice(0, 150);
 
-      if (site.ignoreConsoleErrors && site.ignoreConsoleErrors.some(pattern => text.includes(pattern))) {
+      if (site.ignoreConsoleErrors && site.ignoreConsoleErrors.some((pattern) => text.includes(pattern))) {
         return;
       }
 
@@ -350,16 +365,28 @@ async function checkSite(browser, site) {
     }
 
     result.statusCode = response.status();
+    const headers = response.headers();
 
     if (result.statusCode >= 500) {
       throw new Error(`Сервер вернул ошибку 5xx (HTTP ${result.statusCode})`);
     }
     if (result.statusCode >= 400) {
-      throw new Error(`Страница недоступна, HTTP ${result.statusCode}`);
+      // Диагностика: прежде чем сдаться, посмотрим, что реально пришло —
+      // это настоящий 404 от сайта или страница-заглушка антибот-защиты.
+      const diagBits = [];
+      if (headers["server"]) diagBits.push(`server=${headers["server"]}`);
+      if (headers["cf-ray"] || headers["cf-cache-status"]) diagBits.push("похоже на Cloudflare (cf-ray заголовок)");
+      if (headers["x-powered-by"]) diagBits.push(`x-powered-by=${headers["x-powered-by"]}`);
+      let pageTitle = "";
+      try {
+        pageTitle = (await page.evaluate(() => document.title || "")).slice(0, 100);
+      } catch {}
+      const diagStr = diagBits.length ? ` [${diagBits.join(", ")}]` : "";
+      const titleStr = pageTitle ? ` title="${pageTitle}"` : "";
+      throw new Error(`Страница недоступна, HTTP ${result.statusCode}${diagStr}${titleStr}`);
     }
 
     // --- HTTP-заголовки ---
-    const headers = response.headers();
     const contentType = headers["content-type"] || "";
     if (!contentType.includes("text/html")) {
       result.warnings.push(
@@ -437,9 +464,9 @@ async function checkSite(browser, site) {
       const msg = `Страница содержит мало текста (${pageData.textLength} симв., порог ${minLength})`;
       if (hasExpectedText) {
         // Ожидаемые фразы найдены → это не критично, просто предупреждение
-        result.warnings.push(msg + ' — возможно, контент минимален, но ожидаемые фразы присутствуют');
+        result.warnings.push(msg + " — возможно, контент минимален, но ожидаемые фразы присутствуют");
       } else {
-        throw new Error(msg + ' — возможно, контент не загрузился');
+        throw new Error(msg + " — возможно, контент не загрузился");
       }
     }
 

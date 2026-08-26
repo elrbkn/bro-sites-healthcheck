@@ -3,11 +3,12 @@ const { config, validate } = require("./config");
 const sites = require("../sites");
 const { checkSiteWithRetries } = require("./checker");
 const { buildReport, buildChangesReport } = require("./report");
-const { sendTelegramMessage } = require("./telegram");
+const { broadcastTelegramMessage, fetchNewStarts } = require("./telegram");
 const { loadState, saveState } = require("./state");
+const { loadSubscribers, saveSubscribers } = require("./subscribers");
 
 /**
- * Простой пул с ограничением параллелизма.
+ * Простой пул с ограничением параллелизма (без внешних зависимостей).
  */
 async function runWithConcurrency(items, limit, worker) {
   const results = new Array(items.length);
@@ -26,7 +27,6 @@ async function runWithConcurrency(items, limit, worker) {
 }
 
 function todayStr() {
-  // YYYY-MM-DD в нужной таймзоне 
   return new Date().toLocaleDateString("sv-SE", { timeZone: config.notify.timezone });
 }
 
@@ -37,14 +37,54 @@ function currentHour() {
   );
 }
 
+/**
+ * Опрашивает Telegram на новые /start, добавляет новых подписчиков
+ * в персистентный список и возвращает актуальный список получателей.
+ */
+async function syncSubscribers() {
+  const subscribers = loadSubscribers(config.notify.subscribersFilePath);
+
+  try {
+    const { newChatIds, maxUpdateId } = await fetchNewStarts(subscribers.lastUpdateId);
+    if (newChatIds.length > 0) {
+      console.log(`Новые подписчики через /start: ${newChatIds.join(", ")}`);
+    }
+    for (const id of newChatIds) {
+      if (!subscribers.chatIds.includes(id)) subscribers.chatIds.push(id);
+    }
+    subscribers.lastUpdateId = maxUpdateId;
+    saveSubscribers(config.notify.subscribersFilePath, subscribers);
+  } catch (err) {
+    console.error("Не удалось опросить Telegram на новых подписчиков:", err.response?.data || err.message);
+    // Не валим весь прогон из-за этого — просто рассылаем тем, кто уже есть в списке.
+  }
+
+  // TELEGRAM_CHAT_ID (если задан) всегда остаётся получателем — это "затравочный"/админский чат.
+  const recipients = new Set(subscribers.chatIds);
+  if (config.telegram.chatId) recipients.add(config.telegram.chatId);
+
+  return [...recipients];
+}
+
 async function main() {
   validate();
 
   const state = loadState(config.notify.stateFilePath);
+  const recipients = await syncSubscribers();
+
+  if (recipients.length === 0) {
+    console.log(
+      "Пока нет ни одного получателя: никто не написал боту /start и TELEGRAM_CHAT_ID не задан. " +
+        "Отчёты будут только в логе."
+    );
+  }
 
   console.log(`Запуск проверки ${sites.length} сайтов через прокси SOAX (DE)...`);
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    args: ["--disable-blink-features=AutomationControlled"],
+  });
 
   let results;
   try {
@@ -88,17 +128,20 @@ async function main() {
 
   if (messagesToSend.length === 0) {
     console.log("\nБез изменений и не время дневной сводки — в Telegram ничего не отправлено.");
+  } else if (recipients.length === 0) {
+    console.log("\nЕсть что отправить, но получателей нет — пропускаю отправку.");
   } else {
-    try {
-      for (const msg of messagesToSend) {
-        await sendTelegramMessage(msg);
+    for (const msg of messagesToSend) {
+      const sendResults = await broadcastTelegramMessage(msg, recipients);
+      const failed = sendResults.filter((r) => !r.ok);
+      console.log(
+        `Разослано ${sendResults.length - failed.length}/${sendResults.length} получателям.` +
+          (failed.length ? ` Ошибки: ${failed.map((f) => `${f.chatId} — ${f.error}`).join("; ")}` : "")
+      );
+      if (failed.length === sendResults.length) {
+        process.exitCode = 2; // все получатели не получили сообщение — считаем это отказом
       }
-      console.log(`\nОтправлено сообщений в Telegram: ${messagesToSend.length}.`);
-    } catch (err) {
-    console.error("\nНе удалось отправить отчёт в Telegram:");
-    console.error(err);  // выведет полный стек и все детали
-    process.exitCode = 2;
-  }
+    }
   }
 
   saveState(config.notify.stateFilePath, state);
