@@ -446,14 +446,26 @@ async function checkSite(browser, site) {
       throw new Error(`На странице обнаружены признаки ошибки/блокировки: "${matchedMarker}"`);
     }
 
-    // --- ПРОВЕРКА ОЖИДАЕМЫХ ФРАЗ (СНАЧАЛА) ---
+    // --- ПРОВЕРКА ОЖИДАЕМЫХ ФРАЗ (активное ожидание, а не проверка в один момент) ---
     const hasExpectedText = site.expectedText && site.expectedText.length > 0;
     if (hasExpectedText) {
-      const bodyText = (await page.evaluate(() => document.body?.innerText || "")).toLowerCase();
-      const missing = site.expectedText.filter((phrase) => !bodyText.includes(phrase.toLowerCase()));
-      if (missing.length > 0) {
+      const expectedTextTimeoutMs = site.expectedTextTimeoutMs ?? 20000;
+      try {
+        await page.waitForFunction(
+          (phrases) => {
+            const text = (document.body?.innerText || "").toLowerCase();
+            return phrases.every((p) => text.includes(p));
+          },
+          site.expectedText.map((p) => p.toLowerCase()),
+          { timeout: expectedTextTimeoutMs, polling: 500 }
+        );
+      } catch {
+        // Не дождались — соберём, каких именно фраз не хватило, для понятного сообщения
+        const bodyText = (await page.evaluate(() => document.body?.innerText || "")).toLowerCase();
+        const missing = site.expectedText.filter((phrase) => !bodyText.includes(phrase.toLowerCase()));
         throw new Error(
-          `На странице не найдены ожидаемые фразы: ${missing.map((p) => `"${p}"`).join(", ")} — вероятно, контент не отрендерился или сломался шаблон`
+          `На странице не найдены ожидаемые фразы: ${missing.map((p) => `"${p}"`).join(", ")} ` +
+            `(ждали появления до ${expectedTextTimeoutMs}мс) — вероятно, контент не отрендерился или сломался шаблон`
         );
       }
     }
