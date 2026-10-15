@@ -23,6 +23,40 @@ function isNoiseHost(hostname) {
   return CONSOLE_NOISE_HOSTS.some((h) => hostname.includes(h));
 }
 
+const HEAVY_RESOURCE_TYPES = new Set(["image", "media", "font"]);
+
+/**
+ * Режет прокси-трафик: abort картинок/видео/шрифтов и запросов к трекерам.
+ * Ставится на каждый прокси-контекст (десктоп, мобильный, перепроверка домена).
+ * Документы, скрипты, стили и XHR не трогаются — по ним и идёт проверка.
+ */
+async function applyTrafficSaving(context) {
+  const { blockHeavyResources, blockTrackers } = config.check;
+  if (!blockHeavyResources && !blockTrackers) return;
+  await context.route(
+    () => true,
+    (route) => {
+      const req = route.request();
+      if (blockHeavyResources && HEAVY_RESOURCE_TYPES.has(req.resourceType())) {
+        return route.abort("blockedbyclient");
+      }
+      if (blockTrackers && isNoiseHost(hostnameOf(req.url()))) {
+        return route.abort("blockedbyclient");
+      }
+      return route.fallback();
+    }
+  );
+}
+
+// Ошибки, которые вызывает наша же блокировка, а не поломка сайта:
+//  - ERR_BLOCKED_BY_CLIENT — браузер сообщает о каждом заблокированном запросе;
+//  - "lazy loading err" — ленивая подгрузка картинок Tilda (App Heroes);
+//  - "no supported sources" — видео без загруженного источника (Research).
+const OWN_BLOCK_ERROR_MARKERS = ["ERR_BLOCKED_BY_CLIENT", "lazy loading err", "no supported sources"];
+const isOwnBlockError = (text) =>
+  (config.check.blockHeavyResources || config.check.blockTrackers) &&
+  OWN_BLOCK_ERROR_MARKERS.some((m) => text.includes(m));
+
 const STATIC_RESOURCE_RE = /\.(css|js)(\?.*)?$/i;
 const MAX_ACCEPTABLE_REDIRECTS = 3;
 const MOBILE_VIEWPORT = { width: 390, height: 844 };
@@ -77,6 +111,7 @@ async function verifyDomainChange(browser, url, expectedHost) {
       userAgent: await getDesktopUserAgent(browser),
       locale: "de-DE",
     });
+    await applyTrafficSaving(context);
     // Увеличиваем таймаут на 50%, чтобы избежать временных сбоев
     context.setDefaultTimeout(config.check.pageTimeoutMs * 1.5);
     page = await context.newPage();
@@ -114,6 +149,7 @@ async function checkMobileViewport(browser, url, site = {}) {
       hasTouch: true,
       locale: "de-DE",
     });
+    await applyTrafficSaving(context);
     context.setDefaultTimeout(timeout);
     page = await context.newPage();
 
@@ -316,6 +352,7 @@ async function checkSite(browser, site) {
       viewport: { width: 1366, height: 768 },
       locale: "de-DE",
     });
+    await applyTrafficSaving(context);
     context.setDefaultTimeout(config.check.pageTimeoutMs);
 
     page = await context.newPage();
@@ -336,6 +373,7 @@ async function checkSite(browser, site) {
     page.on("console", (msg) => {
       if (msg.type() !== "error") return;
       const text = msg.text().slice(0, 150);
+      if (isOwnBlockError(text)) return;
 
       if (site.ignoreConsoleErrors && site.ignoreConsoleErrors.some((pattern) => text.includes(pattern))) {
         return;
@@ -347,6 +385,7 @@ async function checkSite(browser, site) {
       consoleErrors.push(errHost ? `${text} [${errHost}]` : text);
     });
     page.on("pageerror", (err) => {
+      if (isOwnBlockError(err.message || "")) return;
       consoleErrors.push(`Необработанное исключение: ${err.message}`.slice(0, 200));
     });
 

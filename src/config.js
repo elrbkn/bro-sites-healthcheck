@@ -31,6 +31,11 @@ const config = {
     concurrency: int(process.env.CONCURRENCY, 3),
     minContentLength: int(process.env.MIN_CONTENT_LENGTH, 50),
     mobileCheckEnabled: bool(process.env.MOBILE_CHECK_ENABLED, true),
+    // Экономия прокси-трафика (замер 15.10.2026: ~87% трафика — картинки).
+    // Не грузить image/media/font — проверка смотрит текст, статус, селекторы и JS-ошибки.
+    blockHeavyResources: bool(process.env.BLOCK_HEAVY_RESOURCES, true),
+    // Не грузить счётчики/аналитику (те же хосты, что и так игнорируются в логе ошибок)
+    blockTrackers: bool(process.env.BLOCK_TRACKERS, true),
   },
   notify: {
     stateFilePath: process.env.STATE_FILE_PATH || "state/last-status.json",
