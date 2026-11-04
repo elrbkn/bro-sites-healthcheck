@@ -3,52 +3,52 @@
     "App Heroes": {
       "ok": true,
       "statusCode": 200,
-      "checkedAt": "2026-11-04T03:34:56.116Z"
+      "checkedAt": "2026-11-04T15:51:34.778Z"
     },
     "Research": {
       "ok": false,
       "statusCode": 502,
-      "checkedAt": "2026-11-04T03:34:56.116Z"
+      "checkedAt": "2026-11-04T15:51:34.778Z"
     },
     "Digitalbosses": {
       "ok": true,
       "statusCode": 200,
-      "checkedAt": "2026-11-04T03:34:56.116Z"
+      "checkedAt": "2026-11-04T15:51:34.778Z"
     },
     "Say Play": {
       "ok": false,
       "statusCode": 502,
-      "checkedAt": "2026-11-04T03:34:56.116Z"
+      "checkedAt": "2026-11-04T15:51:34.778Z"
     },
     "Insider": {
       "ok": false,
       "statusCode": 502,
-      "checkedAt": "2026-11-04T03:34:56.116Z"
+      "checkedAt": "2026-11-04T15:51:34.778Z"
     },
     "BRO agency": {
       "ok": true,
       "statusCode": 200,
-      "checkedAt": "2026-11-04T03:34:56.116Z"
+      "checkedAt": "2026-11-04T15:51:34.778Z"
     },
     "AI Tech": {
       "ok": true,
       "statusCode": 200,
-      "checkedAt": "2026-11-04T03:34:56.116Z"
+      "checkedAt": "2026-11-04T15:51:34.778Z"
     },
     "Press Aff com": {
       "ok": true,
       "statusCode": 200,
-      "checkedAt": "2026-11-04T03:34:56.116Z"
+      "checkedAt": "2026-11-04T15:51:34.778Z"
     },
     "Press Aff ru": {
       "ok": true,
       "statusCode": 200,
-      "checkedAt": "2026-11-04T03:34:56.116Z"
+      "checkedAt": "2026-11-04T15:51:34.778Z"
     },
     "Портал Chocopay": {
       "ok": true,
       "statusCode": 200,
-      "checkedAt": "2026-11-04T03:34:56.116Z"
+      "checkedAt": "2026-11-04T15:51:34.778Z"
     },
     "Личный кабинет Chocopay": {
       "ok": true,
@@ -63,7 +63,7 @@
     "Портал CPA Bro": {
       "ok": true,
       "statusCode": 200,
-      "checkedAt": "2026-11-04T03:34:56.116Z"
+      "checkedAt": "2026-11-04T15:51:34.778Z"
     },
     "Личный кабинет CPA Bro": {
       "ok": true,
@@ -73,18 +73,18 @@
     "l1l.pw линка": {
       "ok": true,
       "statusCode": 200,
-      "checkedAt": "2026-11-04T03:34:56.116Z"
+      "checkedAt": "2026-11-04T15:51:34.778Z"
     },
     "Кабинет Chocopay": {
       "ok": true,
       "statusCode": 200,
-      "checkedAt": "2026-11-04T03:34:56.116Z"
+      "checkedAt": "2026-11-04T15:51:34.778Z"
     },
     "Кабинет CPA Bro": {
       "ok": false,
       "statusCode": 403,
-      "checkedAt": "2026-11-04T03:34:56.116Z"
+      "checkedAt": "2026-11-04T15:51:34.778Z"
     }
   },
-  "lastDailySummaryDate": "2026-11-03"
+  "lastDailySummaryDate": "2026-11-04"
 }
